@@ -1,0 +1,8 @@
+services:
+  bacteria-classifier:
+    build: .
+    image: bacteria-camera-ai:latest
+    container_name: bacteria_ai_app
+    ports:
+      - "5000:5000"
+    restart: unless-stopped

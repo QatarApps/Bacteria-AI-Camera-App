@@ -1,0 +1,5 @@
+Pseudomonas_aeruginosa
+Staphylococcus_aureus
+Lactobacillus_delbrueckii
+Micrococcus_spp
+Candida_albicans
