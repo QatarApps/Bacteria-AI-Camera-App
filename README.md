@@ -1,6 +1,10 @@
 # Bacteria AI Classifier & Camera App 🔬
 
-A real-time AI computer vision application for classifying bacterial species under microscope or camera feeds using PyTorch TorchScript.
+[![Live Web App](https://img.shields.io/badge/Live_Web_App-GitHub_Pages-2563eb?style=for-the-badge&logo=github)](https://qatarapps.github.io/Bacteria-AI-Camera-App/)
+
+🌐 **Live Web Application**: [https://qatarapps.github.io/Bacteria-AI-Camera-App/](https://qatarapps.github.io/Bacteria-AI-Camera-App/)
+
+A real-time AI computer vision application for classifying bacterial species under microscope or camera feeds. Runs directly in any web browser via client-side ONNX Runtime Web (WASM/WebGL), as well as locally on desktop via OpenCV or Docker.
 
 ## 🎯 Target Pathogens vs Comparator Classes
 
