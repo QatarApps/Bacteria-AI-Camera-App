@@ -6,8 +6,8 @@
   <title>Bacteria AI - Real-time Classifier</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <!-- ONNX Runtime Web for 100% Client-Side In-Browser AI Inference -->
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.0/dist/ort.min.js"></script>
+  <!-- ONNX Runtime Web v1.16.3 for high browser compatibility without SharedArrayBuffer requirements -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.16.3/dist/ort.min.js"></script>
   <style>
     :root {
       --bg-dark: #090d16;
@@ -401,24 +401,36 @@
   // Initialize ONNX Runtime Web Model
   async function initModel() {
     try {
-      engineStatus.textContent = 'Downloading ONNX Model (15 KB)...';
-      ort.env.wasm.numThreads = 1;
+      engineStatus.textContent = 'Loading ONNX Model...';
       
-      // Load the model from the local repository
-      session = await ort.InferenceSession.create('./bacteria_classifier.onnx', {
+      // Point WASM assets to jsdelivr CDN for ONNX Runtime 1.16.3
+      if (typeof ort !== 'undefined' && ort.env && ort.env.wasm) {
+        ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.16.3/dist/';
+        ort.env.wasm.numThreads = 1;
+      }
+
+      // Fetch model arraybuffer
+      const resp = await fetch('./bacteria_classifier.onnx?v=' + Date.now());
+      if (!resp.ok) {
+        throw new Error('HTTP ' + resp.status + ' loading bacteria_classifier.onnx');
+      }
+      const modelBuffer = await resp.arrayBuffer();
+
+      // Create inference session
+      session = await ort.InferenceSession.create(modelBuffer, {
         executionProviders: ['wasm']
       });
 
-      engineStatus.textContent = 'AI Ready: Client-side WASM';
+      engineStatus.textContent = 'AI Ready: Edge WASM Engine';
       badgeStatus.textContent = 'READY';
-      predLabel.textContent = 'Camera Ready - Click Start';
+      predLabel.textContent = 'Ready - Click Start Camera';
       startBtn.disabled = false;
       await loadCameras();
     } catch (err) {
-      console.error(err);
-      engineStatus.textContent = 'Failed to load model: ' + err.message;
+      console.error("Initialization error:", err);
+      engineStatus.textContent = 'Load error: ' + (err.message || err);
       badgeStatus.textContent = 'ERROR';
-      predLabel.textContent = 'Model Load Error';
+      predLabel.textContent = err.message || 'Model Load Error';
     }
   }
 
@@ -474,7 +486,7 @@
 
   function loopInference() {
     const now = performance.now();
-    // Run at ~8-10 FPS for optimal battery and smooth updates
+    // Run at ~8-10 FPS for optimal responsiveness and low CPU usage
     if (now - lastInferenceTime > 110) {
       if (!isPredicting && video.videoWidth > 0) {
         runInferenceFromSource(video);
@@ -493,7 +505,7 @@
       hCtx.drawImage(sourceElement, 0, 0, 80, 80);
       const imgData = hCtx.getImageData(0, 0, 80, 80).data;
 
-      // 2. Preprocess into [1, 3, 80, 80] tensor normalized with [-1, 1]: (x/255 - 0.5) / 0.5
+      // 2. Preprocess into [1, 3, 80, 80] tensor normalized to [-1, 1]
       const floatData = new Float32Array(3 * 80 * 80);
       for (let y = 0; y < 80; y++) {
         for (let x = 0; x < 80; x++) {
