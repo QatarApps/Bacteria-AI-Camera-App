@@ -317,9 +317,10 @@
     <div class="controls-bar">
       <button id="startBtn" disabled>▶ Start Camera</button>
       <button id="stopBtn" class="btn-danger" style="display: none;">⏹ Stop Camera</button>
+      <button id="switchCamBtn" style="background: #475569;" title="Switch Front / Back Camera">🔄 Switch Camera</button>
 
       <select id="cameraSelect" title="Select Video Device">
-        <option value="">Default Camera / Microscope</option>
+        <option value="">Default (Back / Microscope)</option>
       </select>
 
       <label class="file-btn" style="cursor: pointer;">
@@ -371,6 +372,7 @@
   const videoBox = document.getElementById('videoBox');
   const startBtn = document.getElementById('startBtn');
   const stopBtn = document.getElementById('stopBtn');
+  const switchCamBtn = document.getElementById('switchCamBtn');
   const cameraSelect = document.getElementById('cameraSelect');
   const fileInput = document.getElementById('fileInput');
   const banner = document.getElementById('banner');
@@ -385,6 +387,7 @@
   let animFrameId = null;
   let isPredicting = false;
   let lastInferenceTime = 0;
+  let currentFacingMode = 'environment'; // Default to Back camera for microscope / specimen samples
 
   // Build probability rows
   LABELS.forEach((label, idx) => {
@@ -443,11 +446,17 @@
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoDevices = devices.filter(d => d.kind === 'videoinput');
-      cameraSelect.innerHTML = '';
+      const prevSelected = cameraSelect.value;
+
+      cameraSelect.innerHTML = `<option value="">Default (${currentFacingMode === 'environment' ? '📷 Back / Rear' : '🤳 Front / Selfie'})</option>`;
       videoDevices.forEach((dev, i) => {
         const opt = document.createElement('option');
         opt.value = dev.deviceId;
-        opt.text = dev.label || `Camera ${i + 1}`;
+        let label = dev.label || `Camera ${i + 1}`;
+        if (/back|rear|environment/i.test(label)) label += ' 📷 (Back)';
+        else if (/front|user|selfie/i.test(label)) label += ' 🤳 (Front)';
+        opt.text = label;
+        if (dev.deviceId === prevSelected) opt.selected = true;
         cameraSelect.appendChild(opt);
       });
     } catch (e) {
@@ -455,33 +464,78 @@
     }
   }
 
+  function getCameraConstraints() {
+    if (cameraSelect.value) {
+      return { video: { deviceId: { exact: cameraSelect.value } } };
+    }
+    return {
+      video: {
+        facingMode: { ideal: currentFacingMode },
+        width: { ideal: 640 },
+        height: { ideal: 480 }
+      }
+    };
+  }
+
+  async function startCameraStream() {
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+    }
+    const constraints = getCameraConstraints();
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = stream;
+    video.style.display = 'block';
+    canvas.style.display = 'none';
+
+    startBtn.style.display = 'none';
+    stopBtn.style.display = 'inline-flex';
+    engineStatus.textContent = 'Live Inference: Active (' + (currentFacingMode === 'environment' ? 'Back' : 'Front') + ')';
+
+    await loadCameras();
+    if (!animFrameId) {
+      loopInference();
+    }
+  }
+
   startBtn.addEventListener('click', async () => {
     try {
-      const constraints = {
-        video: cameraSelect.value ? { deviceId: { exact: cameraSelect.value } } : true
-      };
-      stream = await navigator.mediaDevices.getUserMedia(constraints);
-      video.srcObject = stream;
-      video.style.display = 'block';
-      canvas.style.display = 'none';
-
-      startBtn.style.display = 'none';
-      stopBtn.style.display = 'inline-flex';
-      engineStatus.textContent = 'Live Inference: Active';
-
-      await loadCameras();
-      loopInference();
+      await startCameraStream();
     } catch (err) {
       alert("Unable to access camera: " + err.message);
+    }
+  });
+
+  switchCamBtn.addEventListener('click', async () => {
+    // Toggle between environment (back) and user (front)
+    currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+    cameraSelect.value = ''; // clear explicit deviceId to let facingMode switch
+    try {
+      await startCameraStream();
+    } catch (err) {
+      console.warn("Switch camera error, retrying:", err);
+      currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+      await startCameraStream();
+    }
+  });
+
+  cameraSelect.addEventListener('change', async () => {
+    if (stream) {
+      try {
+        await startCameraStream();
+      } catch (err) {
+        console.warn("Error changing camera:", err);
+      }
     }
   });
 
   stopBtn.addEventListener('click', () => {
     if (stream) {
       stream.getTracks().forEach(t => t.stop());
+      stream = null;
     }
     if (animFrameId) {
       cancelAnimationFrame(animFrameId);
+      animFrameId = null;
     }
     video.srcObject = null;
     startBtn.style.display = 'inline-flex';
