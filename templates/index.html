@@ -121,6 +121,87 @@
       width: 100%;
       height: 100%;
       object-fit: cover;
+      transform-origin: center center;
+      transition: transform 0.1s ease-out;
+    }
+
+    .reticle-box {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 75%;
+      aspect-ratio: 1/1;
+      border: 2px dashed rgba(255, 255, 255, 0.45);
+      border-radius: 12px;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+      z-index: 10;
+    }
+
+    .reticle-corner {
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      border-color: #38bdf8;
+      border-style: solid;
+    }
+    .top-left { top: -2px; left: -2px; border-width: 3px 0 0 3px; border-top-left-radius: 6px; }
+    .top-right { top: -2px; right: -2px; border-width: 3px 3px 0 0; border-top-right-radius: 6px; }
+    .bottom-left { bottom: -2px; left: -2px; border-width: 0 0 3px 3px; border-bottom-left-radius: 6px; }
+    .bottom-right { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; border-bottom-right-radius: 6px; }
+
+    .reticle-label {
+      position: absolute;
+      bottom: 8px;
+      background: rgba(15, 23, 42, 0.85);
+      color: #38bdf8;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+
+    .zoom-bar {
+      margin-top: 0.85rem;
+      padding: 0.5rem 0.75rem;
+      background: #0b1322;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .zoom-btn {
+      background: #1e293b;
+      color: #cbd5e1;
+      padding: 0.35rem 0.7rem;
+      font-size: 0.8rem;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .zoom-btn.active {
+      background: var(--accent);
+      color: white;
+    }
+
+    .target-tip {
+      margin-top: 0.75rem;
+      font-size: 0.82rem;
+      color: #93c5fd;
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.25);
+      padding: 0.65rem 0.85rem;
+      border-radius: 8px;
+      line-height: 1.45;
     }
 
     .controls-bar {
@@ -309,6 +390,27 @@
     <div class="video-container" id="videoBox">
       <video id="webcam" autoplay playsinline muted></video>
       <canvas id="capturedCanvas" style="display: none;"></canvas>
+
+      <!-- Viewfinder Reticle for Precise Microscope/Camera Alignment -->
+      <div class="reticle-box" id="reticleBox">
+        <div class="reticle-corner top-left"></div>
+        <div class="reticle-corner top-right"></div>
+        <div class="reticle-corner bottom-left"></div>
+        <div class="reticle-corner bottom-right"></div>
+        <div class="reticle-label">🎯 AI TARGET AREA</div>
+      </div>
+    </div>
+
+    <!-- Zoom Controls for High Magnification / Eliminating Dark Borders -->
+    <div class="zoom-bar">
+      <span style="font-size: 0.82rem; font-weight: 700; color: #94a3b8;">🔍 Zoom:</span>
+      <button type="button" class="zoom-btn active" data-zoom="1">1x</button>
+      <button type="button" class="zoom-btn" data-zoom="1.5">1.5x</button>
+      <button type="button" class="zoom-btn" data-zoom="2">2x</button>
+      <button type="button" class="zoom-btn" data-zoom="2.5">2.5x</button>
+      <button type="button" class="zoom-btn" data-zoom="3">3x</button>
+      <input type="range" id="zoomSlider" min="1" max="4" step="0.1" value="1" style="flex: 1; accent-color: #3b82f6; cursor: pointer;">
+      <span id="zoomValueText" style="font-size: 0.82rem; font-family: 'JetBrains Mono', monospace; min-width: 38px; color: #38bdf8;">1.0x</span>
     </div>
 
     <!-- Hidden 80x80 canvas for model input resizing -->
@@ -327,6 +429,10 @@
         📁 Upload Image
         <input type="file" id="fileInput" accept="image/*" style="display: none;">
       </label>
+    </div>
+
+    <div class="target-tip">
+      💡 <b>إرشاد للنتائج الدقيقة:</b> تأكد من ملء المربع الأوسط (AI TARGET AREA) بكتل البكتيريا تماماً مثل الصورة المرفوعة. استخدم أزرار الـ <b>Zoom (1.5x أو 2x أو 3x)</b> لتقريب العينة وتجنب الحواف السوداء والإضاءة الخارجية.
     </div>
   </section>
 
@@ -382,12 +488,53 @@
   const engineStatus = document.getElementById('engineStatus');
   const scoresContainer = document.getElementById('scoresContainer');
 
+  const reticleBox = document.getElementById('reticleBox');
+  const zoomSlider = document.getElementById('zoomSlider');
+  const zoomValueText = document.getElementById('zoomValueText');
+  const zoomBtns = document.querySelectorAll('.zoom-btn');
+
   let session = null;
   let stream = null;
   let animFrameId = null;
   let isPredicting = false;
   let lastInferenceTime = 0;
   let currentFacingMode = 'environment'; // Default to Back camera for microscope / specimen samples
+  let currentZoom = 1.0;
+
+  function setZoom(val) {
+    currentZoom = Math.max(1.0, Math.min(4.0, parseFloat(val) || 1.0));
+    zoomSlider.value = currentZoom;
+    zoomValueText.textContent = currentZoom.toFixed(1) + 'x';
+
+    zoomBtns.forEach(btn => {
+      if (Math.abs(parseFloat(btn.dataset.zoom) - currentZoom) < 0.1) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+
+    // Apply smooth CSS magnification to the visible camera preview
+    video.style.transform = `scale(${currentZoom})`;
+    canvas.style.transform = `scale(${currentZoom})`;
+
+    // Apply native hardware zoom if available in browser
+    if (stream) {
+      const track = stream.getVideoTracks()[0];
+      if (track && track.getCapabilities) {
+        const caps = track.getCapabilities();
+        if (caps.zoom) {
+          const hwZoom = Math.min(caps.zoom.max, Math.max(caps.zoom.min, currentZoom));
+          track.applyConstraints({ advanced: [{ zoom: hwZoom }] }).catch(() => {});
+        }
+      }
+    }
+  }
+
+  zoomSlider.addEventListener('input', (e) => setZoom(e.target.value));
+  zoomBtns.forEach(btn => {
+    btn.addEventListener('click', () => setZoom(btn.dataset.zoom));
+  });
 
   // Build probability rows
   LABELS.forEach((label, idx) => {
@@ -486,6 +633,7 @@
     video.srcObject = stream;
     video.style.display = 'block';
     canvas.style.display = 'none';
+    if (reticleBox) reticleBox.style.display = 'flex';
 
     startBtn.style.display = 'none';
     stopBtn.style.display = 'inline-flex';
@@ -538,6 +686,7 @@
       animFrameId = null;
     }
     video.srcObject = null;
+    if (reticleBox) reticleBox.style.display = 'none';
     startBtn.style.display = 'inline-flex';
     stopBtn.style.display = 'none';
     engineStatus.textContent = 'Camera Stopped';
@@ -560,8 +709,22 @@
     isPredicting = true;
 
     try {
-      // 1. Draw frame into 80x80 hidden canvas
-      hCtx.drawImage(sourceElement, 0, 0, 80, 80);
+      // 1. Calculate center-square crop with magnification zoom
+      const sw = sourceElement.videoWidth || sourceElement.naturalWidth || sourceElement.width;
+      const sh = sourceElement.videoHeight || sourceElement.naturalHeight || sourceElement.height;
+      if (!sw || !sh) return;
+
+      const isVideo = (sourceElement === video);
+      const reticleRatio = isVideo ? 0.75 : 1.0;
+      const zoomFactor = isVideo ? currentZoom : 1.0;
+      const baseDimension = Math.min(sw, sh);
+      const cropSize = Math.max(20, Math.min(baseDimension, (baseDimension * reticleRatio) / zoomFactor));
+
+      const sx = (sw - cropSize) / 2;
+      const sy = (sh - cropSize) / 2;
+
+      // Draw the exact zoomed square region into the 80x80 hidden canvas
+      hCtx.drawImage(sourceElement, sx, sy, cropSize, cropSize, 0, 0, 80, 80);
       const imgData = hCtx.getImageData(0, 0, 80, 80).data;
 
       // 2. Preprocess into [1, 3, 80, 80] tensor normalized to [-1, 1]
@@ -654,6 +817,7 @@
 
         video.style.display = 'none';
         canvas.style.display = 'block';
+        if (reticleBox) reticleBox.style.display = 'none';
 
         runInferenceFromSource(img);
         engineStatus.textContent = 'Image Inference Complete';
